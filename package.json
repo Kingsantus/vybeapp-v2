@@ -1,0 +1,23 @@
+{
+  "name": "vybeapp",
+  "version": "1.0.0",
+  "description": "Telegram Bot for solana crypto trading. Track all activity on chain with just a click on telegram.",
+  "keywords": [
+    "vybeapp"
+  ],
+  "homepage": "https://github.com/Kingsantus/vybeapp-v2#readme",
+  "bugs": {
+    "url": "https://github.com/Kingsantus/vybeapp-v2/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kingsantus/vybeapp-v2.git"
+  },
+  "license": "MIT",
+  "author": "Kingsantus Asogwa",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
