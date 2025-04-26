@@ -1,7 +1,7 @@
 {
   "name": "@api/vybe-api",
   "version": "3.8.6",
-  "main": "./index.ts",
+  "main": "./index.js",
   "types": "./index.d.ts",
   "dependencies": {
     "api": "^6.1.3",

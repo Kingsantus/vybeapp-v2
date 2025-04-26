@@ -1,6 +1,5 @@
 import type { FromSchema } from 'json-schema-to-ts';
 import * as schemas from './schemas';
-
 export type GetCollectionOwnersMetadataParam = FromSchema<typeof schemas.GetCollectionOwners.metadata>;
 export type GetCollectionOwnersResponse200 = FromSchema<typeof schemas.GetCollectionOwners.response['200']>;
 export type GetCollectionOwnersResponse400 = FromSchema<typeof schemas.GetCollectionOwners.response['400']>;
