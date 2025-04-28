@@ -59,7 +59,7 @@ bot.start((ctx: Context) => {
     const userName = ctx.message?.from?.first_name || "User";
     ctx.reply(`Hello ${userName}, welcome!`);
     ctx.reply(
-        "This bot is designed to help you with your trading. Type /help to see what I can do."
+        "This bot is designed to help you with your trading. Type /help to see what I can do. Check out `https://alphavybe.com/` to get proper chart of the market"
     );
 });
 
@@ -71,8 +71,7 @@ bot.help((ctx: Context) => {
             "/helptoken - Get help getting token commands\n" +
             "/helpprogram - Get help working with program list\n" +
             "/helpwallet - Get help working with wallet account\n" +
-            "/helpprice - Get help getting price token account\n" +
-            "Checkout "
+            "/helpprice - Get help getting price token account\n"
     );
 });
 
@@ -216,6 +215,8 @@ bot.command("marketohlcv", async (ctx) => {
                 return ctx.reply("Invalid range. Use 'range=<1d|7d|30d>'.");
             }
             range = rangeValue;
+            // Use the 'range' variable in the function logic or remove it if not needed
+            console.log(`Selected range: ${range}`);
         } else {
             return ctx.reply("Invalid argument format. Use 'limit=<number>' or 'range=<1d|7d|30d>'.");
         }
