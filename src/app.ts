@@ -26,14 +26,13 @@ import getTokenBalancests from "./controller/account/TokenBalancests";
 import getWalletNFTBalance from "./controller/account/WalletNFTBalance";
 import getWalletsNFTBalance from "./controller/account/WalletNFTBalancets";
 import getWalletTokenTxs from "./controller/account/WalletTokenTx";
+import getDexAmm from "./controller/price/DEXAMM";
+import getMarkets from "./controller/price/GetMarkets";
+import getMarketOHLCV from "./controller/price/MarketOHLCV";
+import getTokenOHLCV from "./controller/price/TokenOHLCV";
+import getPairOHLCV from "./controller/price/PairOHLCV";
 
 const app = express();
-
-enum range {
-    M = '30d',
-    W = '7d',
-    D = '1d'
-}
 
 const time = {
     H: '1h',
@@ -42,11 +41,19 @@ const time = {
     M: '30d'
 } as const;
 
+enum range {
+    M = '30d',
+    W = '7d',
+    D = '1d'
+}
+
 type Range = '1h' | '24h' | '7d';
 
 // Correct type for time values ("1h", "1d", etc)
 type Time = (typeof time)[keyof typeof time];
 type Resolution = keyof typeof time;
+type Resolute = '1d' | '7d' | '30d';
+type Interval = '1h' | '1d' | '1w' | '1m' | '1y';
 
 bot.start((ctx: Context) => {
     const userName = ctx.message?.from?.first_name || "User";
@@ -63,9 +70,358 @@ bot.help((ctx: Context) => {
             "/help - List available commands\n" +
             "/helptoken - Get help getting token commands\n" +
             "/helpprogram - Get help working with program list\n" +
-            "/helpwallet - Get help working with wallet account\n"
+            "/helpwallet - Get help working with wallet account\n" +
+            "/helpprice - Get help getting price token account\n" +
+            "Checkout "
     );
 });
+
+
+/*              Price         */
+
+bot.command("getdexandamm", async (ctx) => {
+    try {
+        const results = await getDexAmm();
+        if (!results || !results.data || results.data.length === 0) {
+            return ctx.reply("Error while fetching data or no data found.");
+        }
+
+        let replyMessage = "DEX and AMM Programs:\n\n";
+
+        results.data.forEach((result: { programId: string; programName: string }, index: number) => {
+            replyMessage +=
+                `🔹 *Program ${index + 1}*\n` +
+                `🆔 Program ID: \`${result.programId}\`\n` +
+                `🏷️ Program Name: ${result.programName}\n\n`;
+
+            // Check if the message is getting too long
+            if (replyMessage.length > 4000) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                replyMessage = ""; // Reset the message for the next batch
+            }
+        });
+
+        // Send any remaining part of the message
+        if (replyMessage) {
+            ctx.reply(replyMessage, { parse_mode: "Markdown" });
+        }
+
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch DEX and AMM data.");
+    }
+});
+
+bot.command("getmarkets", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+
+    // Remove the /command and split the arguments
+    const args = message.split(" ").slice(1);
+    if (args.length === 0) {
+        return ctx.reply("Please provide a wallet address.");
+    }
+
+    const wallet = args[0];
+    let limit: number | undefined;
+
+    let i = 1;
+    while (i < args.length) {
+        if (args[i].startsWith("limit=")) {
+            limit = parseInt(args[i].split("=")[1], 10);
+        } else {
+            return ctx.reply("Invalid argument format. Use 'limit=<number>'.");
+        }
+        i++;
+    }
+
+    try {
+        const markets = await getMarkets(wallet, limit);
+        
+        if (!markets || !markets.data || markets.data.length === 0) {
+            return ctx.reply("No market data found.");
+        }
+
+        let replyMessage = "Markets Data:\n\n";
+
+        markets.data.forEach((market: { marketId: string; marketName: string; programId: string; programName: string; baseTokenSymbol: string; quoteTokenSymbol: string; baseTokenMint: string; quoteTokenMint: string; baseTokenName: string; quoteTokenName: string; updatedAt: number }, index: number) => {
+            const updatedAt = new Date(market.updatedAt * 1000).toLocaleString();
+            replyMessage +=
+                `🔹 *Market ${index + 1}*\n` +
+                `🆔 Market ID: \`${market.marketId}\`\n` +
+                `🏷️ Market Name: ${market.marketName}\n` +
+                `🔧 Program ID: \`${market.programId}\`\n` +
+                `🏷️ Program Name: ${market.programName}\n`;
+
+            // Dynamically include all tokens
+            if (market.baseTokenSymbol && market.baseTokenMint && market.baseTokenName) {
+                replyMessage +=
+                    `🔄 Base Token Symbol: ${market.baseTokenSymbol}\n` +
+                    `🔑 Base Token Mint: \`${market.baseTokenMint}\`\n` +
+                    `🏷️ Base Token Name: ${market.baseTokenName}\n`;
+            }
+
+            if (market.quoteTokenSymbol && market.quoteTokenMint && market.quoteTokenName) {
+                replyMessage +=
+                    `🔄 Quote Token Symbol: ${market.quoteTokenSymbol}\n` +
+                    `🔑 Quote Token Mint: \`${market.quoteTokenMint}\`\n` +
+                    `🏷️ Quote Token Name: ${market.quoteTokenName}\n`;
+            }
+
+            replyMessage += `🕒 Updated At: ${updatedAt}\n\n`;
+
+            // Check if the message is getting too long
+            if (replyMessage.length > 4000) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                replyMessage = ""; // Reset the message for the next batch
+            }
+        });
+
+        // Send any remaining part of the message
+        if (replyMessage) {
+            ctx.reply(replyMessage, { parse_mode: "Markdown" });
+        }
+
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch market data.");
+    }
+});
+
+
+bot.command("marketohlcv", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+    // remove the /command
+    const args = message.split(" ").slice(1);
+     if (args.length === 0) {
+        return ctx.reply("Please provide a market address.");
+    }
+    
+    const marketid = args[0];
+    let limit: number | undefined;
+    let range: Resolute | undefined;
+
+    let i = 1;
+    while (i < args.length) {
+        if (args[i].startsWith("limit=")) {
+            const limitValue = parseInt(args[i].split("=")[1], 10);
+            if (isNaN(limitValue)) {
+                return ctx.reply("Invalid limit. Please provide a valid number.");
+            }
+            limit = limitValue;
+        } else if (args[i].startsWith("range=")) {
+            const rangeValue = args[i].split("=")[1] as Resolute;
+            if (!['1d', '7d', '30d'].includes(rangeValue)) {
+                return ctx.reply("Invalid range. Use 'range=<1d|7d|30d>'.");
+            }
+            range = rangeValue;
+        } else {
+            return ctx.reply("Invalid argument format. Use 'limit=<number>' or 'range=<1d|7d|30d>'.");
+        }
+        i++;
+    }
+
+    try {
+        const response = await getMarketOHLCV(marketid, range, limit);
+
+        if (response && response.data && response.data.length > 0) {
+            let replyMessage = "";
+
+            response.data.forEach((ohlcvData: { time: number; open: number; high: number; low: number; close: number; volume: number; count: number }, index: number) => {
+                const time = new Date(ohlcvData.time * 1000).toLocaleString();
+
+                replyMessage +=
+                `🔹 *OHLCV Data ${index + 1}*\n` +
+                `⏰ Time: ${time}\n` +
+                `📈 Open: ${ohlcvData.open}\n` +
+                `🔝 High: ${ohlcvData.high}\n` +
+                `🔻 Low: ${ohlcvData.low}\n` +
+                `🔒 Close: ${ohlcvData.close}\n` +
+                `📊 Volume: ${ohlcvData.volume}\n` +
+                `🔢 Count: ${ohlcvData.count}\n\n` +
+                `---\n`;
+
+                // Check if the message is getting too long
+                if (replyMessage.length > 4000) {
+                    ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                    replyMessage = ""; // Reset the message for the next batch
+                }
+            });
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No OHLCV data found.");
+        }
+    } catch (error) {
+        console.error("Error fetching OHLCV data:", error);
+        ctx.reply("An error occurred while fetching OHLCV data.");
+    }
+
+})
+
+bot.command("tokenohlcv", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+    // remove the /command
+    const args = message.split(" ").slice(1);
+     if (args.length === 0) {
+        return ctx.reply("Please provide a mint address.");
+    }
+    
+    const tokenAddress = args[0];
+    let limit: number | undefined;
+    let range: Resolute | undefined;
+
+    let i = 1;
+    while (i < args.length) {
+        if (args[i].startsWith("limit=")) {
+            const limitValue = parseInt(args[i].split("=")[1], 10);
+            if (isNaN(limitValue)) {
+                return ctx.reply("Invalid limit. Please provide a valid number.");
+            }
+            limit = limitValue;
+        } else if (args[i].startsWith("range=")) {
+            const rangeValue = args[i].split("=")[1] as Resolute;
+            if (!['1d', '7d', '30d'].includes(rangeValue)) {
+                return ctx.reply("Invalid range. Use 'range=<1d|7d|30d>'.");
+            }
+            range = rangeValue;
+        } else {
+            return ctx.reply("Invalid argument format. Use 'limit=<number>' or 'range=<1d|7d|30d>'.");
+        }
+        i++;
+    }
+
+    try {
+        const response = await getTokenOHLCV(tokenAddress, range, limit);
+
+        if (response && response.data && response.data.length > 0) {
+            let replyMessage = "";
+
+            response.data.forEach((ohlcvData: { time: number; open: number; high: number; low: number; close: number; volume: number; volumeUsd: number; count: number }, index: number) => {
+                const time = new Date(ohlcvData.time * 1000).toLocaleString();
+
+                replyMessage +=
+                `🔹 *OHLCV Data ${index + 1}*\n` +
+                `⏰ Time: ${time}\n` +
+                `📈 Open: ${ohlcvData.open}\n` +
+                `🔝 High: ${ohlcvData.high}\n` +
+                `🔻 Low: ${ohlcvData.low}\n` +
+                `🔒 Close: ${ohlcvData.close}\n` +
+                `📊 Volume: ${ohlcvData.volume}\n` +
+                `💰 Volume (USD): ${ohlcvData.volumeUsd}\n` +
+                `🔢 Count: ${ohlcvData.count}\n\n` +
+                `---\n`;
+
+                // Check if the message is getting too long
+                if (replyMessage.length > 4000) {
+                    ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                    replyMessage = ""; // Reset the message for the next batch
+                }
+            });
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No OHLCV data found.");
+        }
+    } catch (error) {
+        console.error("Error fetching OHLCV data:", error);
+        ctx.reply("An error occurred while fetching OHLCV data.");
+    }
+
+
+})
+
+
+bot.command("priceohlcv", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+    // remove the /command
+    const args = message.split(" ").slice(1);
+     if (args.length === 0) {
+        return ctx.reply("Please provide a mint address.");
+    }
+
+    const baseMintAddress = args[0];
+    const quoteMintAddress = args[1];
+    let limit: number | undefined;
+    let range: Interval | undefined;
+
+    let i = 2;
+    while (i < args.length) {
+        if (args[i].startsWith("limit=")) {
+            const limitValue = parseInt(args[i].split("=")[1], 10);
+            if (isNaN(limitValue)) {
+                return ctx.reply("Invalid limit. Please provide a valid number.");
+            }
+            limit = limitValue;
+        } else if (args[i].startsWith("range=")) {
+            const rangeValue = args[i].split("=")[1] as Interval;
+            if (!['1h', '1d', '1w', '1m', '1y'].includes(rangeValue)) {
+                return ctx.reply("Invalid range. Use 'range=<1h|1d|1w|1m|1y>'.");
+            }
+            range = rangeValue;
+        } else {
+            return ctx.reply("Invalid argument format. Use 'limit=<number>' or 'range=<1h|1d|1w|1m|1y>'.");
+        }
+        i++;
+    }
+
+    
+    try {
+        const response = await getPairOHLCV(baseMintAddress, quoteMintAddress, limit);
+        console.log(response)
+
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch market data.");
+    }
+})
+
+bot.command("helpprice", async (ctx) => {
+    const helpMessage = `
+        💰 **Price Commands:**
+
+        1. **/getdexandamm**
+        - Get the list of DEX and AMM programs.
+        - Example: /getdexandamm
+
+        2. **/getmarkets <walletAddress> [limit=<number>]**
+        - Get the markets data for a given wallet address with an optional limit.
+        - Example: /getmarkets 5CgWc77mp15NRktbnqz8MENM4w3fXqcGYUVUbEhciZ8U limit=10
+
+        3. **/marketohlcv <marketAddress> [limit=<number>] [range=<1d|7d|30d>]**
+        - Get the OHLCV data for a given market address with optional limit and range.
+        - Example: /marketohlcv 5CgWc77mp15NRktbnqz8MENM4w3fXqcGYUVUbEhciZ8U limit=10 range=7d
+
+        4. **/tokenohlcv <mintAddress> [limit=<number>] [range=<1d|7d|30d>]**
+        - Get the OHLCV data for a given token mint address with optional limit and range.
+        - Example: /tokenohlcv 5CgWc77mp15NRktbnqz8MENM4w3fXqcGYUVUbEhciZ8U limit=10 range=7d
+
+        5. **/priceohlcv <baseMintAddress> <quoteMintAddress> [limit=<number>] [range=<1h|1d|1w|1m|1y>]**
+        - Get the OHLCV data for a given pair of base and quote mint addresses with optional limit and range.
+        - Example: /priceohlcv 5CgWc77mp15NRktbnqz8MENM4w3fXqcGYUVUbEhciZ8U 5CgWc77mp15NRktbnqz8MENM4w3fXqcGYUVUbEhciZ8U limit=10 range=1d
+
+        📌 **Notes:**
+        - Replace \`<walletAddress>\`, \`<marketAddress>\`, \`<mintAddress>\`, \`<baseMintAddress>\`, and \`<quoteMintAddress>\` with the actual addresses.
+        - The \`limit\` parameter should be a positive integer.
+        - The \`range\` parameter can be \`1d\`, \`7d\`, \`30d\` for market and token OHLCV, and \`1h\`, \`1d\`, \`1w\`, \`1m\`, \`1y\` for price OHLCV.
+
+        🔍 **Usage:**
+        - Use these commands to fetch various price-related metrics and details.
+        - Ensure you provide the correct addresses and optional parameters as needed.
+            `;
+
+    ctx.reply(helpMessage, { parse_mode: "Markdown" });
+});
+
 
 
 /*         Account        */
@@ -945,7 +1301,7 @@ bot.command("programdetail", async (ctx) => {
         if (response) {
             let replyMessage = "";
 
-            const blockTime = new Date(response.blockTime * 1000).toLocaleString();
+            // const blockTime = new Date(response.blockTime * 1000).toLocaleString();
 
             replyMessage +=
             `🔹 *Program Details*\n` +

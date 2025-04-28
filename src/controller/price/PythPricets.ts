@@ -9,7 +9,7 @@ vybeApi.auth(apiKey)
 
 type range = "1h" | "1d" | "1w" | "1y";
 
-const getPythPrice = async (priceFeedId: string, limit?: number, interval?: range):Promise<any> => {
+const getPythPrices = async (priceFeedId: string, limit?: number, interval?: range):Promise<any> => {
     try {
         const { data } = await vybeApi.get_pyth_price_ts({resolution: interval ?? '1h', limit: limit ?? 10, priceFeedId: priceFeedId});
         return data;
@@ -19,4 +19,4 @@ const getPythPrice = async (priceFeedId: string, limit?: number, interval?: rang
     }
 }
 
-export default getPythPrice;
+export default getPythPrices;

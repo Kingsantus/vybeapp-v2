@@ -7,20 +7,13 @@ if (!apiKey) {
 
 vybeApi.auth(apiKey);
 
-enum range {
-    H = "1h",
-    M = "1m",
-    W = "1w",
-    D = "1d",
-    Y = "1y"
-}
+type res = '1d' | '7d' | '30d' | undefined;
 
-const getMarketOHLCV = async (marketId: string, range?: range, limit?: number):Promise<any> => {
+const getMarketOHLCV = async (marketId: string, range: res = '1d', limit?: number):Promise<any> => {
     try {
         const { data } = await vybeApi.get_market_filtered_ohlcv({
             marketId: marketId,
-            resolution: (range ?? "1d") as "1d" | "7d" | "30d" | undefined,
-            page: 1,
+            resolution: range,
             limit: limit ?? 10
         });
         return data;

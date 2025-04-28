@@ -7,9 +7,11 @@ if (!apiKey) {
 
 vybeApi.auth(apiKey)
 
-const getTokenOHLCV = async (mintAddress: string, interval?: "1d" | "7d" | "30d", limit?: number):Promise<any> => {
+type res = '1d' | '7d' | '30d' | undefined;
+
+const getTokenOHLCV = async (mintAddress: string, interval: res = '1d', limit?: number):Promise<any> => {
     try {
-        const { data } = await vybeApi.get_token_trade_ohlc({resolution: interval ?? '1d', limit: limit ?? 10, mintAddress: mintAddress});
+        const { data } = await vybeApi.get_token_trade_ohlc({resolution: interval, limit: limit ?? 10, mintAddress: mintAddress});
         return data;
     } catch (err) {
         console.error(err);

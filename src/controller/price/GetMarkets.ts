@@ -8,13 +8,13 @@ if (!apiKey) {
 vybeApi.auth(apiKey)
 
 
-const getMarkets = async (wallet: string):Promise<any> => {
+const getMarkets = async (wallet: string, limit?: number):Promise<any> => {
     try {
         const { data } = await vybeApi.get_markets({
             programId: wallet,
-            page: 1 - 5,
-            limit: 50
+            limit: limit ?? 10
         });
+        
         return data;
     } catch (err) {
         console.error(err);
