@@ -7,16 +7,9 @@ if (!apiKey) {
 
 vybeApi.auth(apiKey)
 
-const range = {
-    D: '1d',
-    W: '7d',
-    M: '30d',
-    DEFAULT: '1d'
-} as const;
-
-const getRanking = async (limit?: number, interval?:  keyof typeof range):Promise<any> => {
+const getRanking = async ( limit?: number ):Promise<any> => {
     try {
-        const { data } = await vybeApi.ranking({limit: limit ?? 10, interval: interval ? range[interval] : range.DEFAULT });
+        const { data } = await vybeApi.ranking({limit: limit ?? 10});
         return data;
     } catch (err) {
         console.error(err);

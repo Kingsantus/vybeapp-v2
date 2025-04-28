@@ -11,7 +11,6 @@ const getKnownAccount = async (ownerAddress?: string):Promise<any> => {
     try {
         const { data } = await vybeApi.get_known_accounts({
             ownerAddress: ownerAddress,
-            sortByAsc: 'price'
         });
         return data;
     } catch (err) {

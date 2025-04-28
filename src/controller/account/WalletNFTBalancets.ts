@@ -7,13 +7,10 @@ if (!apiKey) {
 
 vybeApi.auth(apiKey);
 
-const getWalletsNFTBalance = async (wallet: string[], limit?: number, include?: boolean):Promise<any> => {
+const getWalletsNFTBalance = async (wallet: string[], limit?: number):Promise<any> => {
     try {
         const { data } = await vybeApi.post_wallet_nfts_many({
-            includeNoPriceBalance: include ?? false,
-            sortByAsc: 'amount',
             limit: limit ?? 100,
-            page: 1,
             wallets: wallet ?? []
         });
         return data;

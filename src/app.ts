@@ -11,6 +11,21 @@ import getTopTokenHolders from "./controller/tokens/TopTokenHolders";
 import getTokenVolume from "./controller/tokens/TokenVolume";
 import getTokenTransfer from "./controller/tokens/TokenTransfers";
 import getTokenTrades from "./controller/tokens/TokenTrades";
+import getActiveUsers from "./controller/Programs/ActiveUsers";
+import getInstructionCount from "./controller/Programs/InstructionCount";
+import getProgramActiveUser from "./controller/Programs/ProgramActiveUsers";
+import getProgramDetail from "./controller/Programs/ProgramsDetails";
+import getTransactionCount from "./controller/Programs/TransactionCount";
+import getRanking from "./controller/Programs/Ranking";
+import getProgramList from "./controller/Programs/ProgramsList";
+import getWalletTokenTransactions from "./controller/account/WalletTokenTransactions";
+import getWalletProfitAndLoss from "./controller/account/WalletProfitAndLoss";
+import getKnownAccount from "./controller/account/KnownAccounts";
+import getTokenBalance from "./controller/account/TokenBalances";
+import getTokenBalancests from "./controller/account/TokenBalancests";
+import getWalletNFTBalance from "./controller/account/WalletNFTBalance";
+import getWalletsNFTBalance from "./controller/account/WalletNFTBalancets";
+import getWalletTokenTxs from "./controller/account/WalletTokenTx";
 
 const app = express();
 
@@ -26,6 +41,8 @@ const time = {
     W: '7h',
     M: '30d'
 } as const;
+
+type Range = '1h' | '24h' | '7d';
 
 // Correct type for time values ("1h", "1d", etc)
 type Time = (typeof time)[keyof typeof time];
@@ -44,8 +61,1161 @@ bot.help((ctx: Context) => {
         "Here are the commands you can use:\n" +
             "/start - Start the bot\n" +
             "/help - List available commands\n" +
-            "/helptoken - Get help on token commands\n"
+            "/helptoken - Get help getting token commands\n" +
+            "/helpprogram - Get help working with program list\n" +
+            "/helpwallet - Get help working with wallet account\n"
     );
+});
+
+
+/*         Account        */
+
+bot.command("wallettx", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+    // remove the /command
+    const args = message.split(" ").slice(1);
+    
+    // Initialize variables
+    let day: number | undefined;
+    const wallets: string[] = [];
+
+    // Process arguments to separate wallets and day
+    args.forEach(arg => {
+        const num = Number(arg);
+        if (!isNaN(num)) {
+        day = num;
+        } else {
+        wallets.push(arg);
+        }
+    });
+
+    if (wallets.length === 0) {
+        return ctx.reply("Please provide at least one valid wallet address.");
+    }
+
+    try {
+        const result = await getWalletTokenTransactions(day, wallets);
+
+        if (!result || !result.data || result.data.length === 0) {
+            return ctx.reply("No transaction data found.");
+        }
+
+        let replyMessage = "Transaction Details:\n\n";
+
+        result.ownerAddresses.forEach((address: string, index: number) => {
+            replyMessage += `💼 *Owner Address ${index + 1}*: \`${address}\`\n\n`;
+        });
+
+        result.data.forEach((transaction: any, index: number) => {
+            const blockTime = new Date(transaction.blockTime * 1000).toLocaleString();
+            replyMessage +=
+                `🕒 *Transaction ${index + 1}*\n` +
+                `📅 Block Time: ${blockTime}\n` +
+                `💸 Token Value: ${transaction.tokenValue}\n` +
+                `🔒 Stake Value: ${transaction.stakeValue}\n` +
+                `🔧 System Value: ${transaction.systemValue}\n` +
+                `🔒 Stake Value (SOL): ${transaction.stakeValueSol}\n\n`;
+
+            // Check if the message is getting too long
+            if (replyMessage.length > 4000) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                replyMessage = ""; // Reset the message for the next batch
+            }
+        });
+
+        // Send any remaining part of the message
+        if (replyMessage) {
+            ctx.reply(replyMessage, { parse_mode: "Markdown" });
+        }
+        return;
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch wallet transactions.");
+    }
+})
+
+bot.command("walletpnl", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+    // remove the /command
+    const args = message.split(" ").slice(1);
+     if (args.length === 0) {
+        return ctx.reply("Please provide a wallet address.");
+    }
+
+    const wallet = args[0];
+    let token: string | undefined;
+    let limit: number | undefined;
+    let resolution: range | undefined;
+
+    // Parse optional arguments
+    let i = 1;
+    while (i < args.length) {
+        if (args[i].startsWith("token=")) {
+            token = args[i].split("=")[1];
+        } else if (args[i].startsWith("limit=")) {
+            limit = parseInt(args[i].split("=")[1], 10);
+        } else if (args[i].startsWith("days=")) {
+            const res = args[i].split("=")[1].toUpperCase();
+            if (res in range) {
+                resolution = range[res as keyof typeof range];
+            } else {
+                return ctx.reply("Invalid resolution. Use M, W, or D.");
+            }
+        } else {
+            return ctx.reply("Invalid argument format. Use 'token=<token>', 'limit=<number>', 'resolution=<M|W|D>'.");
+        }
+        i++;
+    }
+
+    try {
+        const result = await getWalletProfitAndLoss(wallet, token, limit, resolution);
+         if (!result || !result.summary) {
+            return ctx.reply("No profit and loss data found.");
+        }
+
+        const {
+            winRate,
+            realizedPnlUsd,
+            unrealizedPnlUsd,
+            uniqueTokensTraded,
+            averageTradeUsd,
+            tradesCount,
+            winningTradesCount,
+            losingTradesCount,
+            tradesVolumeUsd,
+            bestPerformingToken,
+            worstPerformingToken,
+            pnlTrendSevenDays
+        } = result.summary;
+
+        let replyMessage = "Wallet Profit and Loss Summary:\n\n";
+        replyMessage += `🏆 Win Rate: ${winRate}%\n`;
+        replyMessage += `💰 Realized PnL (USD): $${realizedPnlUsd.toFixed(2)}\n`;
+        replyMessage += `💸 Unrealized PnL (USD): $${unrealizedPnlUsd.toFixed(2)}\n`;
+        replyMessage += `🔄 Unique Tokens Traded: ${uniqueTokensTraded}\n`;
+        replyMessage += `💵 Average Trade (USD): $${averageTradeUsd.toFixed(2)}\n`;
+        replyMessage += `📊 Trades Count: ${tradesCount}\n`;
+        replyMessage += `✅ Winning Trades: ${winningTradesCount}\n`;
+        replyMessage += `❌ Losing Trades: ${losingTradesCount}\n`;
+        replyMessage += `📈 Trades Volume (USD): $${tradesVolumeUsd.toFixed(2)}\n`;
+
+        if (bestPerformingToken) {
+            replyMessage += `🏅 Best Performing Token: ${bestPerformingToken}\n`;
+        }
+
+        if (worstPerformingToken) {
+            replyMessage += `🏅 Worst Performing Token: ${worstPerformingToken}\n`;
+        }
+
+        if (pnlTrendSevenDays.length > 0) {
+            replyMessage += `\n📅 PnL Trend (Last 7 Days):\n`;
+            pnlTrendSevenDays.forEach((pnl: number, index: number) => {
+                replyMessage += `Day ${index + 1}: $${pnl.toFixed(2)}\n`;
+            });
+        }
+
+        // Send the reply message
+        ctx.reply(replyMessage, { parse_mode: "Markdown" });
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch wallet transactions.");
+    }
+});
+
+bot.command("wallettoken", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+    // remove the /command
+    const args = message.split(" ").slice(1);
+    if (args.length === 0) {
+        return ctx.reply("Please provide a mint address.");
+    }
+
+    const address = args[0];
+
+    try {
+        const response = await getKnownAccount(address);
+        if (response && response.accounts && response.accounts.length > 0) {
+            let replyMessage = "";
+
+            response.accounts.forEach((account: { ownerAddress: string; name: string; logoUrl: string; labels: string[]; entity: string; dateAdded: string }, index: number) => {
+                const dateAdded = new Date(account.dateAdded).toLocaleString();
+
+                replyMessage +=
+                `🔹 *Known Account ${index + 1}*\n` +
+                `🔑 Owner Address: \`${account.ownerAddress}\`\n` +
+                `🏷️ Name: ${account.name}\n` +
+                `🌐 Logo URL: [Link](${account.logoUrl})\n` +
+                `🏷️ Labels: ${account.labels.join(", ") || "N/A"}\n` +
+                `🏢 Entity: ${account.entity}\n` +
+                `📅 Date Added: ${dateAdded}\n\n` +
+                `---\n`;
+
+                // Check if the message is getting too long
+                if (replyMessage.length > 4000) {
+                    ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                    replyMessage = ""; // Reset the message for the next batch
+                }
+            });
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No known account data found.");
+        }
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch token data.");
+    }
+})
+
+bot.command("walletbalance", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+    // remove the /command
+    const args = message.split(" ").slice(1);
+    if (args.length === 0) {
+        return ctx.reply("Please provide a mint address.");
+    }
+
+    const address = args[0];
+    let limit: number | undefined;
+
+    for (let i = 1; i < args.length; i++) {
+        if (args[i].startsWith("limit=")) {
+            const limitValue = parseInt(args[i].split("=")[1], 10);
+            if (isNaN(limitValue)) {
+                return ctx.reply("Invalid limit. Please provide a valid number.");
+            }
+            limit = limitValue;
+        } else {
+            return ctx.reply("Invalid argument format. Use 'limit=<number>'.");
+        }
+    }
+
+    try {
+        const response = await getTokenBalance(address, limit);
+        
+        if (response) {
+            let replyMessage = "";
+            const date = new Date(response.date).toLocaleString();
+
+            replyMessage +=
+            `📅 Date: ${date}\n` +
+            `🔑 Owner Address: \`${response.ownerAddress}\`\n` +
+            `💰 Staked SOL Balance (USD): ${response.stakedSolBalanceUsd}\n` +
+            `💰 Staked SOL Balance: ${response.stakedSolBalance}\n` +
+            `💰 Active Staked SOL Balance (USD): ${response.activeStakedSolBalanceUsd}\n` +
+            `💰 Active Staked SOL Balance: ${response.activeStakedSolBalance}\n` +
+            `💰 Total Token Value (USD): ${response.totalTokenValueUsd}\n` +
+            `📈 Total Token Value (USD 1d Change): ${response.totalTokenValueUsd1dChange}\n` +
+            `🔢 Total Token Count: ${response.totalTokenCount}\n\n`;
+
+            response.data.forEach((token: { symbol: string; name: string; mintAddress: string; amount: number; priceUsd: number; priceUsd1dChange: number; valueUsd: number; valueUsd1dChange: number; logoUrl: string; category: string; decimals: number; verified: boolean; slot: number }, index: number) => {
+                replyMessage +=
+                `🔹 *Token ${index + 1}*\n` +
+                `🏷️ Symbol: ${token.symbol}\n` +
+                `🏷️ Name: ${token.name}\n` +
+                `🔗 Mint Address: \`${token.mintAddress}\`\n` +
+                `💰 Amount: ${token.amount}\n` +
+                `💰 Price (USD): ${token.priceUsd}\n` +
+                `📈 Price (USD 1d Change): ${token.priceUsd1dChange}\n` +
+                `💰 Value (USD): ${token.valueUsd}\n` +
+                `📈 Value (USD 1d Change): ${token.valueUsd1dChange}\n` +
+                `🌐 Logo URL: [Link](${token.logoUrl})\n` +
+                `🏷️ Category: ${token.category}\n` +
+                `🔢 Decimals: ${token.decimals}\n` +
+                `✅ Verified: ${token.verified ? "Yes" : "No"}\n` +
+                `🏷️ Slot: ${token.slot}\n\n` +
+                `---\n`;
+
+                // Check if the message is getting too long
+                if (replyMessage.length > 4000) {
+                    ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                    replyMessage = ""; // Reset the message for the next batch
+                }
+            });
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No token balance data found.");
+        }
+        
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch token data.");
+    }
+})
+
+
+bot.command("walletbalancets", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+    // remove the /command
+    const args = message.split(" ").slice(1);
+    if (args.length === 0) {
+        return ctx.reply("Please provide a mint address.");
+    }
+
+    const address = args[0];
+    let limit: number | undefined;
+
+    for (let i = 1; i < args.length; i++) {
+        if (args[i].startsWith("day=")) {
+            const limitValue = parseInt(args[i].split("=")[1], 10);
+            if (isNaN(limitValue)) {
+                return ctx.reply("Invalid limit. Please provide a valid number.");
+            }
+            limit = limitValue;
+        } else {
+            return ctx.reply("Invalid argument format. Use 'day=<number>'.");
+        }
+    }
+
+    try {
+        const response = await getTokenBalancests(address, limit);
+        
+        if (response && response.data && response.data.length > 0) {
+            let replyMessage = "";
+
+            replyMessage +=
+            `🔑 Owner Address: \`${response.ownerAddress}\`\n\n`;
+
+            response.data.forEach((balance: { blockTime: number; tokenValue: number; stakeValue: number; systemValue: number; stakeValueSol: number }, index: number) => {
+                const blockTime = new Date(balance.blockTime * 1000).toLocaleString();
+
+                replyMessage +=
+                `🔹 *Token Balance ${index + 1}*\n` +
+                `⏰ Block Time: ${blockTime}\n` +
+                `💰 Token Value: ${balance.tokenValue}\n` +
+                `💰 Stake Value: ${balance.stakeValue}\n` +
+                `💰 System Value: ${balance.systemValue}\n` +
+                `💰 Stake Value (SOL): ${balance.stakeValueSol}\n\n` +
+                `---\n`;
+
+                // Check if the message is getting too long
+                if (replyMessage.length > 4000) {
+                    ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                    replyMessage = ""; // Reset the message for the next batch
+                }
+            });
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No token balance data found.");
+        }
+        
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch token data.");
+    }
+})
+
+bot.command("walletnft", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+    // remove the /command
+    const args = message.split(" ").slice(1);
+    if (args.length === 0) {
+        return ctx.reply("Please provide a mint address.");
+    }
+
+    const address = args[0];
+    let limit: number | undefined;
+
+    for (let i = 1; i < args.length; i++) {
+        if (args[i].startsWith("limit=")) {
+            const limitValue = parseInt(args[i].split("=")[1], 10);
+            if (isNaN(limitValue)) {
+                return ctx.reply("Invalid limit. Please provide a valid number.");
+            }
+            limit = limitValue;
+        } else {
+            return ctx.reply("Invalid argument format. Use 'limit=<number>'.");
+        }
+    }
+
+    try {
+        const response = await getWalletNFTBalance(address, limit);
+        
+        if (response) {
+            let replyMessage = "";
+            const date = new Date(response.date).toLocaleString();
+
+            replyMessage +=
+            `📅 Date: ${date}\n` +
+            `🔑 Owner Address: \`${response.ownerAddress}\`\n` +
+            `💰 Total SOL: ${response.totalSol}\n` +
+            `💰 Total USD: ${response.totalUsd}\n` +
+            `🎨 Total NFT Collection Count: ${response.totalNftCollectionCount}\n\n`;
+
+            if (response.data && response.data.length > 0) {
+                response.data.forEach((nft: { name: string; collectionAddress: string; totalItems: number; valueSol: number; priceSol: number; valueUsd: number; priceUsd: number; logoUrl: string; slot: number }, index: number) => {
+                    replyMessage +=
+                    `🔹 *NFT Collection ${index + 1}*\n` +
+                    `🏷️ Name: ${nft.name}\n` +
+                    `🔗 Collection Address: \`${nft.collectionAddress}\`\n` +
+                    `🎨 Total Items: ${nft.totalItems}\n` +
+                    `💰 Value (SOL): ${nft.valueSol}\n` +
+                    `💰 Price (SOL): ${nft.priceSol}\n` +
+                    `💰 Value (USD): ${nft.valueUsd}\n` +
+                    `💰 Price (USD): ${nft.priceUsd}\n` +
+                    `🌐 Logo URL: [Link](${nft.logoUrl})\n` +
+                    `🏷️ Slot: ${nft.slot}\n\n` +
+                    `---\n`;
+
+                    // Check if the message is getting too long
+                    if (replyMessage.length > 4000) {
+                        ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                        replyMessage = ""; // Reset the message for the next batch
+                    }
+                });
+            } else {
+                replyMessage += "No NFT collections found.\n";
+            }
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No NFT balance data found.");
+        }
+
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch token data.");
+    }
+})
+
+
+bot.command("walletsnft", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+    // remove the /command
+    const args = message.split(" ").slice(1);
+    if (args.length === 0) {
+        return ctx.reply("Please provide a wallet address.");
+    }
+    //adddress is array
+
+    const addresses: string[] = [];
+    let limit: number | undefined;
+
+    // Parse arguments
+    for (let i = 0; i < args.length; i++) {
+        if (args[i].startsWith("limit=")) {
+            const limitValue = parseInt(args[i].split("=")[1], 10);
+            if (isNaN(limitValue)) {
+                return ctx.reply("Invalid limit. Please provide a valid number.");
+            }
+            limit = limitValue;
+        } else {
+            addresses.push(args[i]);
+        }
+    }
+
+    // Check if at least one address is provided
+    if (addresses.length === 0) {
+        return ctx.reply("Please provide one or more mint addresses.");
+    }
+
+    try {
+        const response = await getWalletsNFTBalance(addresses, limit);
+        
+        if (response) {
+            let replyMessage = "";
+            const date = new Date(response.date).toLocaleString();
+
+            replyMessage +=
+            `📅 Date: ${date}\n` +
+            `💰 Total SOL: ${response.totalSol}\n` +
+            `💰 Total USD: ${response.totalUsd}\n` +
+            `🎨 Total NFT Collection Count: ${response.totalNftCollectionCount}\n\n` +
+            `🔑 Owner Addresses:\n`;
+
+            response.ownerAddresses.forEach((address: string) => {
+                replyMessage += `- \`${address}\`\n`;
+            });
+
+            replyMessage += "\n";
+
+            if (response.data && response.data.length > 0) {
+                response.data.forEach((nft: { name: string; collectionAddress: string; totalItems: number; valueSol: number; priceSol: number; valueUsd: number; priceUsd: number; logoUrl: string; slot: number }, index: number) => {
+                    replyMessage +=
+                    `🔹 *NFT Collection ${index + 1}*\n` +
+                    `🏷️ Name: ${nft.name}\n` +
+                    `🔗 Collection Address: \`${nft.collectionAddress}\`\n` +
+                    `🎨 Total Items: ${nft.totalItems}\n` +
+                    `💰 Value (SOL): ${nft.valueSol}\n` +
+                    `💰 Price (SOL): ${nft.priceSol}\n` +
+                    `💰 Value (USD): ${nft.valueUsd}\n` +
+                    `💰 Price (USD): ${nft.priceUsd}\n` +
+                    `🌐 Logo URL: [Link](${nft.logoUrl})\n` +
+                    `🏷️ Slot: ${nft.slot}\n\n` +
+                    `---\n`;
+
+                    // Check if the message is getting too long
+                    if (replyMessage.length > 4000) {
+                        ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                        replyMessage = ""; // Reset the message for the next batch
+                    }
+                });
+            } else {
+                replyMessage += "No NFT collections found.\n";
+            }
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No NFT balance data found.");
+        }
+
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch token data.");
+    }
+})
+
+bot.command("walletstokentx", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+    // remove the /command
+    const args = message.split(" ").slice(1);
+    if (args.length === 0) {
+        return ctx.reply("Please provide a wallet address.");
+    }
+    //adddress is array
+
+    const addresses: string[] = [];
+    let limit: number | undefined;
+
+    // Parse arguments
+    for (let i = 0; i < args.length; i++) {
+        if (args[i].startsWith("limit=")) {
+            const limitValue = parseInt(args[i].split("=")[1], 10);
+            if (isNaN(limitValue)) {
+                return ctx.reply("Invalid limit. Please provide a valid number.");
+            }
+            limit = limitValue;
+        } else {
+            addresses.push(args[i]);
+        }
+    }
+
+    // Check if at least one address is provided
+    if (addresses.length === 0) {
+        return ctx.reply("Please provide one or more mint addresses.");
+    }
+
+    try {
+        const response = await getWalletTokenTxs(addresses, limit);
+        
+        if (response) {
+            let replyMessage = "";
+            const date = new Date(response.date).toLocaleString();
+
+            replyMessage +=
+            `📅 Date: ${date}\n` +
+            `🔑 Owner Addresses:\n`;
+
+            response.ownerAddresses.forEach((address: string) => {
+                replyMessage += `- \`${address}\`\n`;
+            });
+
+            replyMessage +=
+            `💰 Staked SOL Balance (USD): ${response.stakedSolBalanceUsd}\n` +
+            `💰 Staked SOL Balance: ${response.stakedSolBalance}\n` +
+            `💰 Active Staked SOL Balance (USD): ${response.activeStakedSolBalanceUsd}\n` +
+            `💰 Active Staked SOL Balance: ${response.activeStakedSolBalance}\n` +
+            `💰 Total Token Value (USD): ${response.totalTokenValueUsd}\n` +
+            `📈 Total Token Value (USD 1d Change): ${response.totalTokenValueUsd1dChange}\n` +
+            `🔢 Total Token Count: ${response.totalTokenCount}\n\n`;
+
+            if (response.data && response.data.length > 0) {
+                response.data.forEach((token: { symbol: string; name: string; mintAddress: string; amount: number; priceUsd: number; priceUsd1dChange: number; valueUsd: number; valueUsd1dChange: number; logoUrl: string; category: string; decimals: number; verified: boolean; slot: number }, index: number) => {
+                    replyMessage +=
+                    `🔹 *Token ${index + 1}*\n` +
+                    `🏷️ Symbol: ${token.symbol}\n` +
+                    `🏷️ Name: ${token.name}\n` +
+                    `🔗 Mint Address: \`${token.mintAddress}\`\n` +
+                    `💰 Amount: ${token.amount}\n` +
+                    `💰 Price (USD): ${token.priceUsd}\n` +
+                    `📈 Price (USD 1d Change): ${token.priceUsd1dChange}\n` +
+                    `💰 Value (USD): ${token.valueUsd}\n` +
+                    `📈 Value (USD 1d Change): ${token.valueUsd1dChange}\n` +
+                    `🌐 Logo URL: [Link](${token.logoUrl})\n` +
+                    `🏷️ Category: ${token.category}\n` +
+                    `🔢 Decimals: ${token.decimals}\n` +
+                    `✅ Verified: ${token.verified ? "Yes" : "No"}\n` +
+                    `🏷️ Slot: ${token.slot}\n\n` +
+                    `---\n`;
+
+                    // Check if the message is getting too long
+                    if (replyMessage.length > 4000) {
+                        ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                        replyMessage = ""; // Reset the message for the next batch
+                    }
+                });
+            } else {
+                replyMessage += "No token transactions found.\n";
+            }
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No wallet token transaction data found.");
+        }
+
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch token data.");
+    }
+})
+
+bot.command("helpwallet", async (ctx) => {
+    const helpMessage = `
+💼 **Wallet Commands:**
+
+1. **/wallettx <walletAddress> [day=<number>]**
+   - Get the transaction details for one or more wallet addresses within a specified number of days.
+   - Example: /wallettx 5CgWc77mp15NRktbnqz8MENM4w3fXqcGYUVUbEhciZ8U day=7
+
+2. **/walletpnl <walletAddress> [token=<token>] [limit=<number>] [resolution=<M|W|D>]**
+   - Get the profit and loss summary for a wallet address with optional token, limit, and resolution parameters.
+   - Example: /walletpnl 5CgWc77mp15NRktbnqz8MENM4w3fXqcGYUVUbEhciZ8U token=SOL limit=10 resolution=D
+
+3. **/wallettoken <mintAddress>**
+   - Get the known account details for a given mint address.
+   - Example: /wallettoken 5CgWc77mp15NRktbnqz8MENM4w3fXqcGYUVUbEhciZ8U
+
+4. **/walletbalance <mintAddress> [limit=<number>]**
+   - Get the token balance for a given mint address with an optional limit.
+   - Example: /walletbalance 5CgWc77mp15NRktbnqz8MENM4w3fXqcGYUVUbEhciZ8U limit=5
+
+5. **/walletbalancets <mintAddress> [day=<number>]**
+   - Get the token balance time series for a given mint address within a specified number of days.
+   - Example: /walletbalancets 5CgWc77mp15NRktbnqz8MENM4w3fXqcGYUVUbEhciZ8U day=30
+
+6. **/walletnft <mintAddress> [limit=<number>]**
+   - Get the NFT balance for a given mint address with an optional limit.
+   - Example: /walletnft 5CgWc77mp15NRktbnqz8MENM4w3fXqcGYUVUbEhciZ8U limit=5
+
+7. **/walletsnft <walletAddress> [limit=<number>]**
+   - Get the NFT balance for one or more wallet addresses with an optional limit.
+   - Example: /walletsnft 5CgWc77mp15NRktbnqz8MENM4w3fXqcGYUVUbEhciZ8U limit=5
+
+8. **/walletstokentx <walletAddress> [limit=<number>]**
+   - Get the token transactions for one or more wallet addresses with an optional limit.
+   - Example: /walletstokentx 5CgWc77mp15NRktbnqz8MENM4w3fXqcGYUVUbEhciZ8U limit=5
+
+📌 **Notes:**
+- Replace \`<walletAddress>\` and \`<mintAddress>\` with the actual addresses.
+- The \`day\`, \`token\`, \`limit\`, and \`resolution\` parameters are optional and should be provided in the format shown.
+- The \`resolution\` parameter can be \`M\` (Monthly), \`W\` (Weekly), or \`D\` (Daily).
+
+🔍 **Usage:**
+- Use these commands to fetch various metrics and details related to wallets and mint addresses.
+- Ensure you provide the correct addresses and optional parameters as needed.
+    `;
+
+    ctx.reply(helpMessage, { parse_mode: "Markdown" });
+});
+
+
+
+/*       PROGRAMS     */
+
+bot.command("activeusers", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+
+    const args = message.split(" ").slice(1);
+    if (args.length === 0) {
+        return ctx.reply("Please provide a program address.");
+    }
+
+    const programAddress = args[0];
+    let range: Range = '1h';
+
+    // Parse optional arguments
+    for (let i = 1; i < args.length; i++) {
+        if (args[i].startsWith("range=")) {
+            const res = args[i].split("=")[1];
+            if (res === '1h' || res === '24h' || res === '7d') {
+                range = res as Range;
+            } else {
+                return ctx.reply("Invalid range. Use '1h', '24h', or '7d'.");
+            }
+        } else {
+            return ctx.reply("Invalid argument format. Use 'range=<1h|24h|7d>'.");
+        }
+    }
+
+    try {
+        const response = await getActiveUsers(programAddress, range);
+        
+        if (response && response.data && response.data.length > 0) {
+            let replyMessage = "";
+
+            response.data.forEach((userData: { programId: string; dau: number; blockTime: number }, index: number) => {
+                const blockTime = new Date(userData.blockTime * 1000).toLocaleString();
+
+                replyMessage +=
+                `🔹 *Active User Data ${index + 1}*\n` +
+                `🏢 Program ID: \`${userData.programId}\`\n` +
+                `👥 Daily Active Users (DAU): ${userData.dau}\n` +
+                `⏰ Block Time: ${blockTime}\n\n` +
+                `---\n`;
+
+                // Check if the message is getting too long
+                if (replyMessage.length > 4000) {
+                    ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                    replyMessage = ""; // Reset the message for the next batch
+                }
+            });
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No active user data found.");
+        }
+
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch token data.");
+    }
+})
+
+bot.command("instructioncount", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+
+    const args = message.split(" ").slice(1);
+    if (args.length === 0) {
+        return ctx.reply("Please provide a program address.");
+    }
+
+    const programAddress = args[0];
+    let range: Range = '1h';
+
+    // Parse optional arguments
+    for (let i = 1; i < args.length; i++) {
+        if (args[i].startsWith("range=")) {
+            const res = args[i].split("=")[1];
+            if (res === '1h' || res === '24h' || res === '7d') {
+                range = res as Range;
+            } else {
+                return ctx.reply("Invalid range. Use '1h', '24h', or '7d'.");
+            }
+        } else {
+            return ctx.reply("Invalid argument format. Use 'range=<1h|24h|7d>'.");
+        }
+    }
+
+    try {
+        const response = await getInstructionCount(programAddress, range);
+
+        if (response && response.data && response.data.length > 0) {
+            let replyMessage = "";
+
+            response.data.forEach((countData: { programId: string; instructionsCount: number; blockTime: number }, index: number) => {
+                const blockTime = new Date(countData.blockTime * 1000).toLocaleString();
+
+                replyMessage +=
+                `🔹 *Instruction Count Data ${index + 1}*\n` +
+                `🏢 Program ID: \`${countData.programId}\`\n` +
+                `📊 Instructions Count: ${countData.instructionsCount}\n` +
+                `⏰ Block Time: ${blockTime}\n\n` +
+                `---\n`;
+
+                // Check if the message is getting too long
+                if (replyMessage.length > 4000) {
+                    ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                    replyMessage = ""; // Reset the message for the next batch
+                }
+            });
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No instruction count data found.");
+        }
+        
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch token data.");
+    }
+
+});
+
+bot.command("programactiveusers", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+
+    const args = message.split(" ").slice(1);
+    if (args.length === 0) {
+        return ctx.reply("Please provide a program address.");
+    }
+
+    const programAddress = args[0];
+    let limit: number | undefined;
+
+    // Parse optional arguments
+    for (let i = 1; i < args.length; i++) {
+        if (args[i].startsWith("limit=")) {
+            const limitValue = parseInt(args[i].split("=")[1], 10);
+            if (isNaN(limitValue)) {
+                return ctx.reply("Invalid limit. Please provide a valid number.");
+            }
+            limit = limitValue;
+        } else {
+            return ctx.reply("Invalid argument format. Use 'range=<1h|24h|7d>'.");
+        }
+    }
+
+    try {
+        const response = await getProgramActiveUser(programAddress, limit);
+        
+        if (response && response.data && response.data.length > 0) {
+            let replyMessage = "";
+
+            response.data.forEach((userData: { programId: string; wallet: string; transactions: number; instructions: number }, index: number) => {
+                replyMessage +=
+                `🔹 *Active User ${index + 1}*\n` +
+                `🏢 Program ID: \`${userData.programId}\`\n` +
+                `🔑 Wallet: \`${userData.wallet}\`\n` +
+                `📊 Transactions: ${userData.transactions}\n` +
+                `📋 Instructions: ${userData.instructions}\n\n` +
+                `---\n`;
+
+                // Check if the message is getting too long
+                if (replyMessage.length > 4000) {
+                    ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                    replyMessage = ""; // Reset the message for the next batch
+                }
+            });
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No active user data found.");
+        }
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch token data.");
+    }
+
+})
+
+bot.command("programdetail", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+
+    const args = message.split(" ").slice(1);
+    if (args.length === 0) {
+        return ctx.reply("Please provide a program address.");
+    }
+
+    const programAddress = args[0];
+
+    try {
+        const response = await getProgramDetail(programAddress);
+        
+        if (response) {
+            let replyMessage = "";
+
+            const blockTime = new Date(response.blockTime * 1000).toLocaleString();
+
+            replyMessage +=
+            `🔹 *Program Details*\n` +
+            `🏢 Program ID: \`${response.programId}\`\n` +
+            `🏷️ Name: ${response.name}\n` +
+            `🌐 Logo URL: [Link](${response.logoUrl || "#"})\n` +
+            `🏷️ Friendly Name: ${response.friendlyName}\n` +
+            `👥 Daily Active Users (DAU): ${response.dau}\n` +
+            `📉 New Users Change (1d): ${response.newUsersChange1d}\n` +
+            `📊 Transactions (1d): ${response.transactions1d}\n` +
+            `📋 Instructions (1d): ${response.instructions1d}\n` +
+            `🏢 Entity Name: ${response.entityName}\n` +
+            `📝 Program Description: ${response.programDescription}\n` +
+            `🏷️ Labels: ${response.labels.join(", ") || "N/A"}\n`;
+
+            // Check if the message is getting too long
+            if (replyMessage.length > 4000) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                replyMessage = ""; // Reset the message for the next batch
+            }
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No program details found.");
+        }
+        
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch token data.");
+    }
+
+})
+
+bot.command("transactioncount", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+
+    const args = message.split(" ").slice(1);
+    if (args.length === 0) {
+        return ctx.reply("Please provide a program address.");
+    }
+
+    const programAddress = args[0];
+    let range: Range = '1h';
+
+    // Parse optional arguments
+    for (let i = 1; i < args.length; i++) {
+        if (args[i].startsWith("range=")) {
+            const res = args[i].split("=")[1];
+            if (res === '1h' || res === '24h' || res === '7d') {
+                range = res as Range;
+            } else {
+                return ctx.reply("Invalid range. Use '1h', '24h', or '7d'.");
+            }
+        } else {
+            return ctx.reply("Invalid argument format. Use 'range=<1h|24h|7d>'.");
+        }
+    }
+
+    try {
+        const response = await getTransactionCount(programAddress, range);
+        
+        if (response && response.data && response.data.length > 0) {
+            let replyMessage = "";
+
+            response.data.forEach((transactionData: { programId: string; transactionsCount: number; blockTime: number }, index: number) => {
+                const blockTime = new Date(transactionData.blockTime * 1000).toLocaleString();
+
+                replyMessage +=
+                `🔹 *Transaction Count Data ${index + 1}*\n` +
+                `🏢 Program ID: \`${transactionData.programId}\`\n` +
+                `📊 Transactions Count: ${transactionData.transactionsCount}\n` +
+                `⏰ Block Time: ${blockTime}\n\n` +
+                `---\n`;
+
+                // Check if the message is getting too long
+                if (replyMessage.length > 4000) {
+                    ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                    replyMessage = ""; // Reset the message for the next batch
+                }
+            });
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No transaction count data found.");
+        }
+        
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch token data.");
+    }
+
+});
+
+
+bot.command("ranking", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+
+    const args = message.split(" ").slice(1);
+    
+    let limit: number | undefined;
+
+    // Parse optional arguments
+   for (let i = 0; i < args.length; i++) {
+        if (args[i].startsWith("limit=")) {
+            const limitValue = parseInt(args[i].split("=")[1], 10);
+            if (isNaN(limitValue)) {
+                return ctx.reply("Invalid limit. Please provide a valid number.");
+            }
+            limit = limitValue;
+        } else {
+            return ctx.reply("Invalid argument format. Use 'limit=<number>'.");
+        }
+    }
+
+    try {
+        const response = await getRanking(limit);
+        
+        if (response && response.data && response.data.length > 0) {
+            let replyMessage = "";
+            const date = new Date(response.date * 1000).toLocaleString();
+
+            replyMessage += `📅 Date: ${date}\n🕒 Interval: ${response.interval}\n🔢 Limit: ${response.limit}\n\n`;
+
+            response.data.forEach((rankData: { programRank: number; programId: string; score: number; programName: string }, index: number) => {
+                replyMessage +=
+                `🔹 *Ranking ${index + 1}*\n` +
+                `🏆 Rank: ${rankData.programRank}\n` +
+                `🏢 Program ID: \`${rankData.programId}\`\n` +
+                `📈 Score: ${rankData.score.toFixed(6)}\n` +
+                `🏷️ Program Name: ${rankData.programName}\n\n` +
+                `---\n`;
+
+                // Check if the message is getting too long
+                if (replyMessage.length > 4000) {
+                    ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                    replyMessage = ""; // Reset the message for the next batch
+                }
+            });
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No ranking data found.");
+        }
+
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch token data.");
+    }
+
+});
+
+bot.command("programlist", async (ctx) => {
+    const message = ctx.message?.text;
+    if (!message) return ctx.reply("Invalid message.");
+
+    const args = message.split(" ").slice(1);
+    
+    let limit: number | undefined;
+
+    // Parse optional arguments
+   for (let i = 0; i < args.length; i++) {
+        if (args[i].startsWith("limit=")) {
+            const limitValue = parseInt(args[i].split("=")[1], 10);
+            if (isNaN(limitValue)) {
+                return ctx.reply("Invalid limit. Please provide a valid number.");
+            }
+            limit = limitValue;
+        } else {
+            return ctx.reply("Invalid argument format. Use 'limit=<number>'.");
+        }
+    }
+
+    try {
+        const response = await getProgramList(limit);
+        
+        if (response && response.data && response.data.length > 0) {
+            let replyMessage = "";
+
+            response.data.forEach((program: { programId: string; name?: string; logoUrl?: string; friendlyName?: string; dau: number; newUsersChange1d: number; transactions1d: number; instructions1d: number; entityName?: string; programDescription?: string; labels: string[] }, index: number) => {
+                replyMessage +=
+                `🔹 *Program ${index + 1}*\n` +
+                `🏢 Program ID: \`${program.programId}\`\n` +
+                `🏷️ Name: ${program.name || "N/A"}\n` +
+                `🌐 Logo URL: [Link](${program.logoUrl || "#"})\n` +
+                `🏷️ Friendly Name: ${program.friendlyName || "N/A"}\n` +
+                `👥 Daily Active Users (DAU): ${program.dau}\n` +
+                `📉 New Users Change (1d): ${program.newUsersChange1d}\n` +
+                `📊 Transactions (1d): ${program.transactions1d}\n` +
+                `📋 Instructions (1d): ${program.instructions1d}\n` +
+                `🏢 Entity Name: ${program.entityName || "N/A"}\n` +
+                `📝 Program Description: ${program.programDescription || "N/A"}\n` +
+                `🏷️ Labels: ${program.labels.join(", ") || "N/A"}\n\n` +
+                `---\n`;
+
+                // Check if the message is getting too long
+                if (replyMessage.length > 4000) {
+                    ctx.reply(replyMessage, { parse_mode: "Markdown" });
+                    replyMessage = ""; // Reset the message for the next batch
+                }
+            });
+
+            // Send any remaining part of the message
+            if (replyMessage) {
+                ctx.reply(replyMessage, { parse_mode: "Markdown" });
+            }
+        } else {
+            ctx.reply("No program list data found.");
+        }
+
+    } catch (error) {
+        console.error(error);
+        ctx.reply("🚫 Failed to fetch token data.");
+    }
+
+});
+
+bot.command("/helpprogram", async (ctx) => {
+    const helpMessage = `
+🤖 **Available Commands:**
+
+1. **/activeusers <programAddress> [range=<1h|24h|7d>]**
+   - Get the number of active users for a specific program within a given time range.
+   - Example: /activeusers program123 range=24h
+
+2. **/instructioncount <programAddress> [range=<1h|24h|7d>]**
+   - Get the instruction count for a specific program within a given time range.
+   - Example: /instructioncount program123 range=7d
+
+3. **/programactiveusers <programAddress> [limit=<number>]**
+   - Get the list of active users for a specific program with an optional limit.
+   - Example: /programactiveusers program123 limit=10
+
+4. **/programdetail <programAddress>**
+   - Get detailed information about a specific program.
+   - Example: /programdetail program123
+
+5. **/transactioncount <programAddress> [range=<1h|24h|7d>]**
+   - Get the transaction count for a specific program within a given time range.
+   - Example: /transactioncount program123 range=24h
+
+6. **/ranking [limit=<number>]**
+   - Get the ranking of programs with an optional limit.
+   - Example: /ranking limit=5
+
+7. **/programlist [limit=<number>]**
+   - Get the list of programs with an optional limit.
+   - Example: /programlist limit=10
+
+📌 **Notes:**
+- Replace \`<programAddress>\` with the actual program address.
+- The \`range\` parameter can be \`1h\`, \`24h\`, or \`7d\`.
+- The \`limit\` parameter should be a positive integer.
+
+🔍 **Usage:**
+- Use these commands to fetch various metrics and details about programs.
+- Ensure you provide the correct program address and optional parameters as needed.
+    `;
+
+    ctx.reply(helpMessage, { parse_mode: "Markdown" });
 });
 
 

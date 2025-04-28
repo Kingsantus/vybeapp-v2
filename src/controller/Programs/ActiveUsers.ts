@@ -11,7 +11,10 @@ type Range = '1h' | '24h' | '7d';
 
 const getActiveUsers = async (programAddress: string, range: Range = '1h'):Promise<any> => {
     try {
-        const { data } = await vybeApi.get_program_active_users_count({range: range, programAddress: programAddress});
+        const { data } = await vybeApi.get_program_active_users_count({
+            programAddress: programAddress,
+            range: range
+        });
         return data;
     } catch (err) {
         console.error(err);

@@ -7,27 +7,17 @@ if (!apiKey) {
 
 vybeApi.auth(apiKey)
 
-const getWalletTokenTxs = async (day?: number, wallet?: string[]): Promise<any> => {
-    try {
-        vybeApi.post_wallet_tokens_many({
-        wallets: wallet ?? [],
-        holderMinimum: 50,
-        includeNoPriceBalance: true,
-        oneDayTradeMinimum: 100,
-        onlyVerified: true,
-        sortByDesc: 'yes',
-        sortByAsc: 'yes',
-        page: 1,
-        oneDayTradeVolumeMinimum: 100,
-        minAssetValue: '5',
-        maxAssetValue: '10',
-        limit: 23
+const getWalletTokenTxs = async ( wallet?: string[], limit?: number): Promise<any> => {
+   try {
+        const { data } = await vybeApi.post_wallet_tokens_many({
+            wallets: wallet ?? [],
+            onlyVerified: true,
+            limit: limit ?? 10
         })
-        .then(({ data }) => console.log(data))
-        .catch(err => console.error(err));
-
-    } catch {
-
+        return data;
+    } catch (err) {
+        console.error(err);
+        throw err;
     }
 }
 
