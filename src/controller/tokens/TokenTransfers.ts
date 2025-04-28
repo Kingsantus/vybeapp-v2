@@ -16,9 +16,9 @@ const getTokenTransfer = async (mintAddress?: string, callingProgram?: string, s
             senderAddress: senderAddress,
             receiverTokenAccount: receiverTokenAccount,
             receiverAddress: receiverAddress,
-            limit: limit ?? 10,
-            sortByAsc: 'amount'
+            limit: limit ?? 5
         });
+        
         return data;
     } catch (err) {
         console.error(err);

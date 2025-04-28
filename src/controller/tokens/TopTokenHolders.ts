@@ -10,9 +10,9 @@ vybeApi.auth(apiKey)
 const getTopTokenHolders = async (mintAddress: string, limit?: number):Promise<any> => {
     try {
         const { data } = await vybeApi.get_top_holders({
+            mintAddress: mintAddress,
             limit: limit ?? 10,
-            sortByAsc: 'rank',
-            mintAddress: mintAddress
+            sortByAsc: 'rank'
         });
         return data;
     } catch (err) {

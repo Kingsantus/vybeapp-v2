@@ -7,14 +7,16 @@ if (!apiKey) {
 
 vybeApi.auth(apiKey)
 
-type time = {
+const time = {
     H: '1h',
     D: '1d',
     W: '7h',
     M: '30d'
-}
+} as const;
 
-const getTokenTrades = async (programId?: string, resolution?: time, limit?: number, baseMintAddress?: string, quoteMintAddress?: string, marketId?: string, authorityAddress?: string):Promise<any> => {
+type Time = typeof time[keyof typeof time];
+
+const getTokenTrades = async (programId?: string, resolution?: Time, limit?: number, baseMintAddress?: string, quoteMintAddress?: string, marketId?: string, authorityAddress?: string):Promise<any> => {
     try {
         const { data } = await vybeApi.get_trade_data_program({
             programId: programId,
@@ -22,9 +24,10 @@ const getTokenTrades = async (programId?: string, resolution?: time, limit?: num
             quoteMintAddress: quoteMintAddress,
             marketId: marketId,
             authorityAddress: authorityAddress,
-            resolution: typeof resolution === 'string' ? resolution : resolution ? resolution.H : '1h',
-            sortByAsc: 'price',
-            limit: limit ?? 10,
+            resolution: typeof resolution === 'string' && Object.values(time).includes(resolution as Time)
+                ? resolution as Time
+                : time.H,
+            limit: limit ?? 5,
         });
         return data;
     } catch (err) {

@@ -9,7 +9,10 @@ vybeApi.auth(apiKey)
 
 const getTokenVolume = async (mintAddress: string, limit?: number):Promise<any> => {
     try {
-        const { data } = await vybeApi.get_token_volume_time_series({limit: limit ?? 10, mintAddress: mintAddress});
+        const { data } = await vybeApi.get_token_volume_time_series({
+            mintAddress: mintAddress,
+            limit: limit ?? 5
+        });
         return data;
     } catch (err) {
         console.error(err);
